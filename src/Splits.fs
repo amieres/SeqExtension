@@ -1,6 +1,15 @@
 /// Implements Seq.splitBy, Seq.splitAt, Seq.tryHeadTail
+module Seq =    
+    let rtn = Seq.singleton
+    let insertO  vSO              = vSO |> Option.map(Seq.map Some) |> Option.defaultWith(fun () -> rtn None)
+    let insertR (vSR:Result<_,_>) = vSR |> function | Error m -> rtn (Error m) | Ok v -> Seq.map Ok v
+    let absorbO  vOS              = vOS |> Seq.choose id
+    let absorbR  vOS              = vOS |> Seq.choose (function Ok v -> Some v |_-> None)
+    let ofOption vO = 
+        match vO with
+        | Some v -> Seq.singleton v
+        | None   -> Seq.empty    
 
-module Seq
     type [< RequireQualifiedAccess >] SplitByOption = Exclude | IncludeInFirst | IncludeInSecond
 
     type [< RequireQualifiedAccess >] private SplitSubUnfoldState<'T> = 
@@ -44,8 +53,9 @@ module Seq
             let finish () = state.splitterO <- None   ; state.currentSeqO <- None ; state.isDone <- true   
 
             let tryNextSub start  =
+                printfn "new sub enumerator %A" start
                 let en = getEnumerator()
-                for i in 0..start - 1 do (en.MoveNext() |> ignore)
+                for i in 0..start - 1 do (en.MoveNext() |> ignore<bool>)
                 fun () ->
                     if en.MoveNext()   then Some en.Current
                     else                    en.Dispose()
@@ -64,7 +74,7 @@ module Seq
 
             //printfn "Unfold %A" currentSeqNo
             while state.currentSeqO |> Option.isSome do 
-                //printfn "skipping"
+                printfn "skipping %A %A" currentSeqNo state.currentPos
                 subUnFold(tryNextMain, bingo , finish) |> ignore
             if state.isDone then None else
             if opt <> SplitByOption.IncludeInSecond then state.splitterO <- None
@@ -104,3 +114,37 @@ module Seq
         | Choice2Of3 (Some headv) -> Seq.empty |> ftail headv |> Some
         | Choice3Of3 v            -> Some v
         | _                       -> None
+
+/////////// Sample Usage
+
+//    [ -1 ; 0 ; 1; 2; 3; -1; 3; 5; 7; -1; 2; 3; 9 ; -1] 
+//    |> Seq.map  (fun x -> printfn "---> %A" x; x)
+//    |> splitBy ((=) -1) SplitByOption.Exclude
+//    |> Seq.skip 2
+//    //|> Seq.take 2
+//    |> Seq.iter (fun s -> 
+//        let s = Seq.cache s
+//        Seq.length s |> printfn " ==> %A %A" (Seq.toList s) ) 
+//
+//    "Hello friend how are you? Good "
+//    |> Seq.toArray
+//    |> Seq.map  (fun x -> printfn "---> %A" x; x)
+//    |> splitBy ((=) ' ') SplitByOption.IncludeInFirst
+//    //|> Seq.iter (printfn "%A")
+//    |> Seq.skip 3
+//    //|> Seq.take 2
+//    |> Seq.iter (fun s -> 
+//        let s = Seq.cache s
+//        Seq.length s |> printfn " ==> %A %A" (System.String(Seq.toArray s)) ) 
+//
+//
+//    [ 1 ; 2 ; 3 ; 4 ; 5 ; 6 ; 7 ; 8 ]
+//    |> Seq.map  (fun x -> printfn "---> %A" x; x)
+//    |> splitAt  2
+//    |> printfn "%A"
+//
+//    [ 1 ; 2 ; 3 ; 4 ; 5 ; 6 ; 7 ; 8 ]
+//    |> Seq.map  (fun x -> printfn "---> %A" x; x)
+//    |> tryHeadTail id     (fun head tail -> printfn "head = %A, tail = %A" head tail )
+//    |> Option.defaultWith (fun ()        -> printfn "No Head Tail"                   )
+//
