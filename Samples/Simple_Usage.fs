@@ -7,6 +7,9 @@
 //|> Seq.take 2
 |> Seq.iter (fun s -> 
     let s = Seq.cache s
+    // this Seq.cache/Seq.toArray is required because Seq.length (Seq.isEmpty) consumes (partly) the sequence 
+    // and then the next Seq.*** operation needs to restart
+    // to avoid this behaviour Seq.cache can be used or Seq.tryHeadTail
     Seq.length s |> printfn " ==> %A %A" (Seq.toList s) ) 
 
 "Hello friend how are you? Good "
