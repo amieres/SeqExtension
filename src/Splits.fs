@@ -1,5 +1,5 @@
 /// Implements Seq.splitBy, Seq.splitAt, Seq.tryHeadTail
-module Seq =    
+module Seq
     let rtn = Seq.singleton
     let insertO  vSO              = vSO |> Option.map(Seq.map Some) |> Option.defaultWith(fun () -> rtn None)
     let insertR (vSR:Result<_,_>) = vSR |> function | Error m -> rtn (Error m) | Ok v -> Seq.map Ok v
