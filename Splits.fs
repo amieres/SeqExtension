@@ -1,3 +1,5 @@
+/// Implements Seq.splitBy, Seq.splitAt, Seq.tryHeadTail
+
 module Seq
     type [< RequireQualifiedAccess >] SplitByOption = Exclude | IncludeInFirst | IncludeInSecond
 
