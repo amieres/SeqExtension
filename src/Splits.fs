@@ -26,8 +26,13 @@ module Seq
         mutable currentSeqO : 'T seq option
     }
 
+    let getSplitById =
+        let mutable id = 100
+        fun () -> id <- id + 1 ; id
+
     /// Straight scan through is efficient, reusing seqs causes rescan from beginning
     let splitBy f opt (input: 'a seq) =
+        let splitById = getSplitById()
         let getEnumerator() = input.GetEnumerator()
         let startingState() = 
             {
@@ -53,7 +58,7 @@ module Seq
             let finish () = state.splitterO <- None   ; state.currentSeqO <- None ; state.isDone <- true   
 
             let tryNextSub start  =
-                printfn "new sub enumerator %A" start
+                printfn "%A new sub enumerator %A" splitById start
                 let en = getEnumerator()
                 for i in 0..start - 1 do (en.MoveNext() |> ignore<bool>)
                 fun () ->
@@ -72,9 +77,9 @@ module Seq
                                 else None
                     else             Some( v, SplitSubUnfoldState.Started(tryNext, bingo, finish) )
 
-            //printfn "Unfold %A" currentSeqNo
+            //printfn "%i Unfold %A %A" splitById currentSeqNo state.currentPos
             while state.currentSeqO |> Option.isSome do 
-                printfn "skipping %A %A" currentSeqNo state.currentPos
+                //printfn "%i skipping %A %A" splitById currentSeqNo state.currentPos
                 subUnFold(tryNextMain, bingo , finish) |> ignore
             if state.isDone then None else
             if opt <> SplitByOption.IncludeInSecond then state.splitterO <- None
@@ -82,12 +87,12 @@ module Seq
                 let start = SplitSubUnfoldState.Start(currentSeqNo, state.currentPos)
                 match state.splitterO, opt with
                 | Some v, SplitByOption.IncludeInSecond -> SplitSubUnfoldState.PostValue(v, start)
-                | _                                   ->                                  start
+                | _                                     ->                                  start
                 |> Seq.unfold(function
                     | SplitSubUnfoldState.PostValue(v, next)                 -> Some(v, next)
                     | SplitSubUnfoldState.Finish                             -> None
                     | SplitSubUnfoldState.Started(tryNext, bingo, finish)    -> subUnFold(tryNext, bingo, finish)
-                    | SplitSubUnfoldState.Start(seqNo, myStart)              -> //printfn "Starting %d at %d = %d" seqNo myStart state.currentPos
+                    | SplitSubUnfoldState.Start(seqNo, myStart)              -> //printfn "%d Starting %d at %d = %d" splitById seqNo myStart state.currentPos
                                                                                 if state.currentPos = myStart // && not state.isDone 
                                                                                 then subUnFold(tryNextMain       , bingo , finish)
                                                                                 else subUnFold(tryNextSub myStart, ignore, ignore)
@@ -98,8 +103,8 @@ module Seq
 
     let splitAt n s =
         s
-        |> Seq.mapi(fun i v -> i,v)
-        |> splitBy (fst >> ((=) n )) SplitByOption.IncludeInSecond
+        |> Seq.mapi(fun i v -> (i,v))
+        |> splitBy (fst >> ((=) n ) (* >>! printfn " split %i %A" n *) ) SplitByOption.IncludeInSecond
         |> Seq.map (Seq.map snd)
         |> Seq.truncate 2
 
@@ -111,40 +116,38 @@ module Seq
             | result                  -> fun _ -> result
         ) 
         |> function
-        | Choice2Of3 (Some headv) -> Seq.empty |> ftail headv |> Some
+        | Choice2Of3 (Some headv) -> ftail headv Seq.empty |> Some
         | Choice3Of3 v            -> Some v
         | _                       -> None
 
 /////////// Sample Usage
+//
+//    [1..24] 
+//    |> Seq.mapi  (fun i x -> printfn $"{i}: {x}"; x)
+//    |> splitBy (fun n -> n % 3 = 0) SplitByOption.Exclude
+//    // |> splitAt 4
+//    |> Seq.map    Seq.cache // required because multiple uses of seq would force restarting from the beginning
+//    |> Seq.filter (fun s -> Seq.length s < 100)
+//    |> Seq.filter (fun s -> Seq.isEmpty s |> not)
+//    |> Seq.filter (Seq.isEmpty >> not >>! print )
+//    // |> Seq.skip 1
+//    // |> Seq.take 2
+//    |> Seq.iter (fun s -> 
+//        //let s = Seq.cache s
+//        printfn " ==> %A %A" (Seq.toList s) (Seq.length s)
+//    )
 
-//    [ -1 ; 0 ; 1; 2; 3; -1; 3; 5; 7; -1; 2; 3; 9 ; -1] 
-//    |> Seq.map  (fun x -> printfn "---> %A" x; x)
-//    |> splitBy ((=) -1) SplitByOption.Exclude
-//    |> Seq.skip 2
-//    //|> Seq.take 2
-//    |> Seq.iter (fun s -> 
-//        let s = Seq.cache s
-//        Seq.length s |> printfn " ==> %A %A" (Seq.toList s) ) 
-//
-//    "Hello friend how are you? Good "
-//    |> Seq.toArray
-//    |> Seq.map  (fun x -> printfn "---> %A" x; x)
-//    |> splitBy ((=) ' ') SplitByOption.IncludeInFirst
-//    //|> Seq.iter (printfn "%A")
-//    |> Seq.skip 3
-//    //|> Seq.take 2
-//    |> Seq.iter (fun s -> 
-//        let s = Seq.cache s
-//        Seq.length s |> printfn " ==> %A %A" (System.String(Seq.toArray s)) ) 
-//
-//
-//    [ 1 ; 2 ; 3 ; 4 ; 5 ; 6 ; 7 ; 8 ]
-//    |> Seq.map  (fun x -> printfn "---> %A" x; x)
-//    |> splitAt  2
-//    |> printfn "%A"
-//
-//    [ 1 ; 2 ; 3 ; 4 ; 5 ; 6 ; 7 ; 8 ]
-//    |> Seq.map  (fun x -> printfn "---> %A" x; x)
-//    |> tryHeadTail id     (fun head tail -> printfn "head = %A, tail = %A" head tail )
-//    |> Option.defaultWith (fun ()        -> printfn "No Head Tail"                   )
-//
+//  let lines = 
+//       """
+//  10		CBR	280					
+//  130	SALES REVENUE	DES			NP			
+//  160	Net Sales Stock Warehouse			C	NP		8???2 +(00300) +(80020) +(80080)	B22/CPO"""
+//      |> Seq.mapi    (fun i x -> printfn $"{i}: {x}"; x)
+//      |> Seq.splitBy (fun   a -> a = '\n' || a = '\r') Seq.SplitByOption.Exclude
+//      |> Seq.map     Seq.cache
+//      |> Seq.filter (Seq.isEmpty >> not)
+//      |> Seq.take 2
+//  
+//  lines 
+//  |> Seq.iter (fun ar -> new string(Seq.toArray ar) |> (+) "***** " |> print)
+
